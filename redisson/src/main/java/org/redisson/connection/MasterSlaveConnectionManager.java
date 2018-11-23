@@ -391,6 +391,7 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
         c.setReadMode(cfg.getReadMode());
         c.setSubscriptionMode(cfg.getSubscriptionMode());
         c.setDnsMonitoringInterval(cfg.getDnsMonitoringInterval());
+        c.setKeepAlive(cfg.isKeepAlive());
 
         return c;
     }
@@ -610,6 +611,8 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
         if (dnsMonitor != null) {
             dnsMonitor.stop();
         }
+        
+        connectionWatcher.stop();
 
         if (cfg.getExecutor() == null) {
             executor.shutdown();
@@ -680,14 +683,7 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
     }
 
     protected void stopThreads() {
-        timer.stop();
-        executor.shutdown();
-        try {
-            executor.awaitTermination(15, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        group.shutdownGracefully().syncUninterruptibly();
+        shutdown();
     }
     
     public PublishSubscribeService getSubscribeService() {

@@ -61,12 +61,12 @@ import org.redisson.api.RedissonReactiveClient;
 import org.redisson.api.TransactionOptions;
 import org.redisson.client.codec.Codec;
 import org.redisson.codec.ReferenceCodecProvider;
-import org.redisson.command.CommandReactiveService;
 import org.redisson.config.Config;
 import org.redisson.config.ConfigSupport;
 import org.redisson.connection.ConnectionManager;
 import org.redisson.eviction.EvictionScheduler;
 import org.redisson.pubsub.SemaphorePubSub;
+import org.redisson.reactive.CommandReactiveService;
 import org.redisson.reactive.ReactiveProxyBuilder;
 import org.redisson.reactive.RedissonBatchReactive;
 import org.redisson.reactive.RedissonKeysReactive;
@@ -75,13 +75,11 @@ import org.redisson.reactive.RedissonListMultimapReactive;
 import org.redisson.reactive.RedissonListReactive;
 import org.redisson.reactive.RedissonMapCacheReactive;
 import org.redisson.reactive.RedissonMapReactive;
-import org.redisson.reactive.RedissonPatternTopicReactive;
 import org.redisson.reactive.RedissonReadWriteLockReactive;
 import org.redisson.reactive.RedissonScoredSortedSetReactive;
 import org.redisson.reactive.RedissonSetCacheReactive;
 import org.redisson.reactive.RedissonSetMultimapReactive;
 import org.redisson.reactive.RedissonSetReactive;
-import org.redisson.reactive.RedissonTopicReactive;
 import org.redisson.reactive.RedissonTransactionReactive;
 
 /**
@@ -296,23 +294,23 @@ public class RedissonReactive implements RedissonReactiveClient {
     }
 
     @Override
-    public <M> RTopicReactive<M> getTopic(String name) {
-        return new RedissonTopicReactive<M>(commandExecutor, name);
+    public RTopicReactive getTopic(String name) {
+        return ReactiveProxyBuilder.create(commandExecutor, new RedissonTopic(commandExecutor, name), RTopicReactive.class);
     }
 
     @Override
-    public <M> RTopicReactive<M> getTopic(String name, Codec codec) {
-        return new RedissonTopicReactive<M>(codec, commandExecutor, name);
+    public RTopicReactive getTopic(String name, Codec codec) {
+        return ReactiveProxyBuilder.create(commandExecutor, new RedissonTopic(codec, commandExecutor, name), RTopicReactive.class);
     }
 
     @Override
-    public <M> RPatternTopicReactive<M> getPatternTopic(String pattern) {
-        return new RedissonPatternTopicReactive<M>(commandExecutor, pattern);
+    public RPatternTopicReactive getPatternTopic(String pattern) {
+         return ReactiveProxyBuilder.create(commandExecutor, new RedissonPatternTopic(commandExecutor, pattern), RPatternTopicReactive.class);
     }
 
     @Override
-    public <M> RPatternTopicReactive<M> getPatternTopic(String pattern, Codec codec) {
-        return new RedissonPatternTopicReactive<M>(codec, commandExecutor, pattern);
+    public RPatternTopicReactive getPatternTopic(String pattern, Codec codec) {
+        return ReactiveProxyBuilder.create(commandExecutor, new RedissonPatternTopic(codec, commandExecutor, pattern), RPatternTopicReactive.class);
     }
 
     @Override
@@ -383,6 +381,11 @@ public class RedissonReactive implements RedissonReactiveClient {
     @Override
     public RScriptReactive getScript() {
         return ReactiveProxyBuilder.create(commandExecutor, new RedissonScript(commandExecutor), RScriptReactive.class);
+    }
+    
+    @Override
+    public RScriptReactive getScript(Codec codec) {
+        return ReactiveProxyBuilder.create(commandExecutor, new RedissonScript(commandExecutor, codec), RScriptReactive.class);
     }
 
     @Override

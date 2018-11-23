@@ -21,7 +21,7 @@ import org.reactivestreams.Publisher;
 import org.redisson.client.codec.Codec;
 
 /**
- * Interface for using Redis pipeline feature.
+ * Reactive interface for Redis pipeline feature.
  * <p>
  * All method invocations on objects
  * from this interface are batched to separate queue and could be executed later
@@ -238,13 +238,12 @@ public interface RBatchReactive {
     /**
      * Returns topic instance by name.
      *
-     * @param <M> type of message
      * @param name - name of object
      * @return Topic object
      */
-    <M> RTopicReactive<M> getTopic(String name);
+    RTopicReactive getTopic(String name);
 
-    <M> RTopicReactive<M> getTopic(String name, Codec codec);
+    RTopicReactive getTopic(String name, Codec codec);
 
     /**
      * Returns queue instance by name.
@@ -286,9 +285,9 @@ public interface RBatchReactive {
      * @param name - name of object
      * @return Deque object
      */
-    <V> RDequeReactive<V> getDequeReactive(String name);
+    <V> RDequeReactive<V> getDeque(String name);
 
-    <V> RDequeReactive<V> getDequeReactive(String name, Codec codec);
+    <V> RDequeReactive<V> getDeque(String name, Codec codec);
 
     /**
      * Returns "atomic long" instance by name.
@@ -296,7 +295,7 @@ public interface RBatchReactive {
      * @param name - name of object
      * @return AtomicLong object
      */
-    RAtomicLongReactive getAtomicLongReactive(String name);
+    RAtomicLongReactive getAtomicLong(String name);
 
     /**
      * Returns atomicDouble instance by name.
@@ -342,6 +341,14 @@ public interface RBatchReactive {
      */
     RScriptReactive getScript();
 
+    /**
+     * Returns script operations object using provided codec.
+     * 
+     * @param codec - codec for params and result
+     * @return Script object
+     */
+    RScriptReactive getScript(Codec codec);
+    
     /**
      * Returns keys operations.
      * Each of Redis/Redisson object associated with own key

@@ -45,7 +45,6 @@ public class RedissonMapCacheTest extends BaseMapTest {
         Map<?, ?> map = Deencapsulation.getField(evictionScheduler, "tasks");
         assertThat(map.isEmpty()).isFalse();
         cache.destroy();
-        System.out.println("keys: " + map.keySet());
         assertThat(map.isEmpty()).isTrue();
     }
     
@@ -69,6 +68,16 @@ public class RedissonMapCacheTest extends BaseMapTest {
     protected <K, V> RMap<K, V> getLoaderTestMap(String name, Map<K, V> map) {
         MapOptions<K, V> options = MapOptions.<K, V>defaults().loader(createMapLoader(map));
         return redisson.getMapCache("test", options);        
+    }
+    
+    @Test
+    public void testSizeInMemory() {
+        RMapCache<Integer, Integer> map = redisson.getMapCache("test");
+        for (int i = 0; i < 10; i++) {
+            map.put(i, i, 5, TimeUnit.SECONDS);
+        }
+        
+        assertThat(map.sizeInMemory()).isGreaterThanOrEqualTo(466);
     }
     
     @Test
@@ -649,6 +658,38 @@ public class RedissonMapCacheTest extends BaseMapTest {
         map.destroy();
     }
 
+    @Test
+    public void testPutAllGetTTL() throws InterruptedException {
+        RMapCache<SimpleKey, SimpleValue> map = redisson.getMapCache("simple06");
+        Assert.assertNull(map.get(new SimpleKey("33")));
+        Assert.assertNull(map.get(new SimpleKey("55")));
+
+        Map<SimpleKey, SimpleValue> entries = new HashMap<>();
+        entries.put(new SimpleKey("33"), new SimpleValue("44"));
+        entries.put(new SimpleKey("55"), new SimpleValue("66"));
+        map.putAll(entries, 2, TimeUnit.SECONDS);
+
+        SimpleValue val1 = map.get(new SimpleKey("33"));
+        Assert.assertEquals("44", val1.getValue());
+        SimpleValue val2 = map.get(new SimpleKey("55"));
+        Assert.assertEquals("66", val2.getValue());
+
+        Thread.sleep(1000);
+
+        Assert.assertEquals(2, map.size());
+        SimpleValue val3 = map.get(new SimpleKey("33"));
+        Assert.assertEquals("44", val3.getValue());
+        SimpleValue val4 = map.get(new SimpleKey("55"));
+        Assert.assertEquals("66", val4.getValue());
+        Assert.assertEquals(2, map.size());
+
+        Thread.sleep(1000);
+
+        Assert.assertNull(map.get(new SimpleKey("33")));
+        Assert.assertNull(map.get(new SimpleKey("55")));
+        map.destroy();
+    }
+    
     @Test
     public void testPutIfAbsentTTL() throws Exception {
         RMapCache<SimpleKey, SimpleValue> map = redisson.getMapCache("simple");

@@ -122,6 +122,11 @@ public class RedissonSetMultimapValues<V> extends RedissonExpirable implements R
                 System.currentTimeMillis(), encodeMapKey(key));
     }
 
+    @Override
+    public RFuture<Long> sizeInMemoryAsync() {
+        List<Object> keys = Arrays.<Object>asList(getName(), timeoutSetName);
+        return super.sizeInMemoryAsync(keys);
+    }
 
     @Override
     public RFuture<Integer> sizeAsync() {
@@ -303,6 +308,16 @@ public class RedissonSetMultimapValues<V> extends RedissonExpirable implements R
         return commandExecutor.writeAsync(getName(), codec, RedisCommands.SRANDMEMBER_SINGLE, getName());
     }
 
+    @Override
+    public Set<V> random(int count) {
+        return get(randomAsync(count));
+    }
+
+    @Override
+    public RFuture<Set<V>> randomAsync(int count) {
+        return commandExecutor.writeAsync(getName(), codec, RedisCommands.SRANDMEMBER, getName(), count);
+    }
+    
     @Override
     public RFuture<Boolean> removeAsync(Object o) {
         return commandExecutor.evalWriteAsync(getName(), codec, RedisCommands.EVAL_BOOLEAN,

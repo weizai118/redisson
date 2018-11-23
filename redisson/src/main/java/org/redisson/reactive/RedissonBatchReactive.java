@@ -40,6 +40,7 @@ import org.redisson.RedissonSet;
 import org.redisson.RedissonSetCache;
 import org.redisson.RedissonSetMultimap;
 import org.redisson.RedissonStream;
+import org.redisson.RedissonTopic;
 import org.redisson.api.BatchOptions;
 import org.redisson.api.BatchResult;
 import org.redisson.api.RAtomicDoubleReactive;
@@ -71,7 +72,6 @@ import org.redisson.api.RStreamReactive;
 import org.redisson.api.RTopicReactive;
 import org.redisson.api.RedissonReactiveClient;
 import org.redisson.client.codec.Codec;
-import org.redisson.command.CommandReactiveBatchService;
 import org.redisson.connection.ConnectionManager;
 import org.redisson.eviction.EvictionScheduler;
 
@@ -179,13 +179,13 @@ public class RedissonBatchReactive implements RBatchReactive {
     }
 
     @Override
-    public <M> RTopicReactive<M> getTopic(String name) {
-        return new RedissonTopicReactive<M>(executorService, name);
+    public RTopicReactive getTopic(String name) {
+        return ReactiveProxyBuilder.create(executorService, new RedissonTopic(executorService, name), RTopicReactive.class);
     }
 
     @Override
-    public <M> RTopicReactive<M> getTopic(String name, Codec codec) {
-        return new RedissonTopicReactive<M>(codec, executorService, name);
+    public RTopicReactive getTopic(String name, Codec codec) {
+        return ReactiveProxyBuilder.create(executorService, new RedissonTopic(codec, executorService, name), RTopicReactive.class);
     }
 
     @Override
@@ -213,19 +213,19 @@ public class RedissonBatchReactive implements RBatchReactive {
     }
 
     @Override
-    public <V> RDequeReactive<V> getDequeReactive(String name) {
+    public <V> RDequeReactive<V> getDeque(String name) {
         return ReactiveProxyBuilder.create(executorService, new RedissonDeque<V>(executorService, name, null), 
                 new RedissonListReactive<V>(executorService, name), RDequeReactive.class);
     }
 
     @Override
-    public <V> RDequeReactive<V> getDequeReactive(String name, Codec codec) {
+    public <V> RDequeReactive<V> getDeque(String name, Codec codec) {
         return ReactiveProxyBuilder.create(executorService, new RedissonDeque<V>(codec, executorService, name, null), 
                 new RedissonListReactive<V>(codec, executorService, name), RDequeReactive.class);
     }
 
     @Override
-    public RAtomicLongReactive getAtomicLongReactive(String name) {
+    public RAtomicLongReactive getAtomicLong(String name) {
         return ReactiveProxyBuilder.create(executorService, new RedissonAtomicLong(executorService, name), RAtomicLongReactive.class);
     }
 
@@ -271,6 +271,11 @@ public class RedissonBatchReactive implements RBatchReactive {
     @Override
     public RScriptReactive getScript() {
         return ReactiveProxyBuilder.create(executorService, new RedissonScript(executorService), RScriptReactive.class);
+    }
+    
+    @Override
+    public RScriptReactive getScript(Codec codec) {
+        return ReactiveProxyBuilder.create(executorService, new RedissonScript(executorService, codec), RScriptReactive.class);
     }
 
     @Override

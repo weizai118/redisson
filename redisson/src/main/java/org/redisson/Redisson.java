@@ -77,6 +77,7 @@ import org.redisson.api.RTopic;
 import org.redisson.api.RTransaction;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.RedissonReactiveClient;
+import org.redisson.api.RedissonRxClient;
 import org.redisson.api.TransactionOptions;
 import org.redisson.client.codec.Codec;
 import org.redisson.command.CommandExecutor;
@@ -166,21 +167,44 @@ public class Redisson implements RedissonClient {
     }
 
     /**
-     * Create reactive Redisson instance with default config
+     * Create Reactive Redisson instance with default config
+     *
+     * @return Redisson instance
+     */
+    public static RedissonRxClient createRx() {
+        Config config = new Config();
+        config.useSingleServer().setAddress("redis://127.0.0.1:6379");
+        return createRx(config);
+    }
+
+    /**
+     * Create Reactive Redisson instance with provided config
+     *
+     * @param config for Redisson
+     * @return Redisson instance
+     */
+    public static RedissonRxClient createRx(Config config) {
+        RedissonRx react = new RedissonRx(config);
+        if (config.isReferenceEnabled()) {
+            react.enableRedissonReferenceSupport();
+        }
+        return react;
+    }
+
+    
+    /**
+     * Create Reactive Redisson instance with default config
      *
      * @return Redisson instance
      */
     public static RedissonReactiveClient createReactive() {
         Config config = new Config();
         config.useSingleServer().setAddress("redis://127.0.0.1:6379");
-//        config.useMasterSlaveConnection().setMasterAddress("127.0.0.1:6379").addSlaveAddress("127.0.0.1:6389").addSlaveAddress("127.0.0.1:6399");
-//        config.useSentinelConnection().setMasterName("mymaster").addSentinelAddress("127.0.0.1:26389", "127.0.0.1:26379");
-//        config.useClusterServers().addNodeAddress("127.0.0.1:7000");
         return createReactive(config);
     }
 
     /**
-     * Create reactive Redisson instance with provided config
+     * Create Reactive Redisson instance with provided config
      *
      * @param config for Redisson
      * @return Redisson instance
@@ -392,6 +416,11 @@ public class Redisson implements RedissonClient {
     public RScript getScript() {
         return new RedissonScript(connectionManager.getCommandExecutor());
     }
+    
+    @Override
+    public RScript getScript(Codec codec) {
+        return new RedissonScript(connectionManager.getCommandExecutor(), codec);
+    }
 
     @Override
     public RScheduledExecutorService getExecutorService(String name) {
@@ -471,23 +500,23 @@ public class Redisson implements RedissonClient {
     }
 
     @Override
-    public <M> RTopic<M> getTopic(String name) {
-        return new RedissonTopic<M>(connectionManager.getCommandExecutor(), name);
+    public RTopic getTopic(String name) {
+        return new RedissonTopic(connectionManager.getCommandExecutor(), name);
     }
 
     @Override
-    public <M> RTopic<M> getTopic(String name, Codec codec) {
-        return new RedissonTopic<M>(codec, connectionManager.getCommandExecutor(), name);
+    public RTopic getTopic(String name, Codec codec) {
+        return new RedissonTopic(codec, connectionManager.getCommandExecutor(), name);
     }
 
     @Override
-    public <M> RPatternTopic<M> getPatternTopic(String pattern) {
-        return new RedissonPatternTopic<M>(connectionManager.getCommandExecutor(), pattern);
+    public RPatternTopic getPatternTopic(String pattern) {
+        return new RedissonPatternTopic(connectionManager.getCommandExecutor(), pattern);
     }
 
     @Override
-    public <M> RPatternTopic<M> getPatternTopic(String pattern, Codec codec) {
-        return new RedissonPatternTopic<M>(codec, connectionManager.getCommandExecutor(), pattern);
+    public RPatternTopic getPatternTopic(String pattern, Codec codec) {
+        return new RedissonPatternTopic(codec, connectionManager.getCommandExecutor(), pattern);
     }
 
     @Override

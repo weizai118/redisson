@@ -22,7 +22,6 @@ import org.redisson.api.RScoredSortedSetAsync;
 import org.redisson.client.RedisClient;
 import org.redisson.client.codec.Codec;
 import org.redisson.client.protocol.decoder.ListScanResult;
-import org.redisson.command.CommandReactiveExecutor;
 
 /**
  * 
@@ -60,7 +59,7 @@ public class RedissonScoredSortedSetReactive<V>  {
     }
 
     public String getName() {
-        return ((RedissonScoredSortedSet)instance).getName();
+        return ((RedissonScoredSortedSet<V>)instance).getName();
     }
     
     public Publisher<V> iterator() {

@@ -84,7 +84,7 @@ public class CommandDecoder extends ReplayingDecoder<State> {
         QueueCommand data = ctx.channel().attr(CommandsQueue.CURRENT_COMMAND).get();
 
         if (log.isTraceEnabled()) {
-            log.trace("channel: {} message: {}", ctx.channel(), in.toString(0, in.writerIndex(), CharsetUtil.UTF_8));
+            log.trace("reply: {}, channel: {}, command: {}", in.toString(0, in.writerIndex(), CharsetUtil.UTF_8), ctx.channel(), data);
         }
         if (state() == null) {
             boolean makeCheckpoint = data != null;
@@ -129,7 +129,7 @@ public class CommandDecoder extends ReplayingDecoder<State> {
                 }
                 sendNext(ctx, data);
             } catch (Exception e) {
-                log.error("Unable to decode data. channel: {} message: {}", ctx.channel(), in.toString(0, in.writerIndex(), CharsetUtil.UTF_8), e);
+                log.error("Unable to decode data. reply: {}, channel: {}, command: {}", in.toString(0, in.writerIndex(), CharsetUtil.UTF_8), ctx.channel(), data, e);
                 cmd.tryFailure(e);
                 sendNext(ctx);
                 throw e;
@@ -155,7 +155,7 @@ public class CommandDecoder extends ReplayingDecoder<State> {
             CommandData<Object, Object> cmd) throws IOException {
         if (state().getLevels().size() == 2) {
             StateLevel secondLevel = state().getLevels().get(1);
-            
+
             if (secondLevel.getParts().isEmpty()) {
                 state().getLevels().remove(1);
             }
@@ -189,12 +189,15 @@ public class CommandDecoder extends ReplayingDecoder<State> {
                     }
                     firstLevel.setLastList(null);
                     firstLevel.setLastListSize(0);
-                    
+
                     while (in.isReadable() && firstLevel.getParts().size() < firstLevel.getSize()) {
                         decode(in, cmd, firstLevel.getParts(), ctx.channel(), false);
                     }
                     decodeList(in, cmd, null, ctx.channel(), 0, firstLevel.getParts(), false);
                 } else {
+                    while (firstLevel.getSize() == firstLevel.getParts().size() && in.isReadable()) {
+                        decode(in, cmd, firstLevel.getParts(), ctx.channel(), false);
+                    }
                     decodeList(in, cmd, null, ctx.channel(), firstLevel.getSize(), firstLevel.getParts(), false);
                 }
             }
@@ -461,29 +464,30 @@ public class CommandDecoder extends ReplayingDecoder<State> {
             return StringCodec.INSTANCE.getValueDecoder();
         }
 
-        Decoder<Object> decoder = data.getCommand().getReplayDecoder();
         if (parts != null) {
             MultiDecoder<Object> multiDecoder = data.getCommand().getReplayMultiDecoder();
             if (multiDecoder != null) {
                 Decoder<Object> mDecoder = multiDecoder.getDecoder(parts.size(), state());
                 if (mDecoder != null) {
-                    decoder = mDecoder;
+                    return mDecoder;
                 }
             }
         }
+
+        Decoder<Object> decoder = data.getCommand().getReplayDecoder();
         if (decoder == null) {
             if (data.getCommand().getOutParamType() == ValueType.MAP) {
-                if (parts.size() % 2 != 0) {
-                    decoder = data.getCodec().getMapValueDecoder();
+                if (parts != null && parts.size() % 2 != 0) {
+                    return data.getCodec().getMapValueDecoder();
                 } else {
-                    decoder = data.getCodec().getMapKeyDecoder();
+                    return data.getCodec().getMapKeyDecoder();
                 }
             } else if (data.getCommand().getOutParamType() == ValueType.MAP_KEY) {
-                decoder = data.getCodec().getMapKeyDecoder();
+                return data.getCodec().getMapKeyDecoder();
             } else if (data.getCommand().getOutParamType() == ValueType.MAP_VALUE) {
-                decoder = data.getCodec().getMapValueDecoder();
+                return data.getCodec().getMapValueDecoder();
             } else {
-                decoder = data.getCodec().getValueDecoder();
+                return data.getCodec().getValueDecoder();
             }
         }
         return decoder;

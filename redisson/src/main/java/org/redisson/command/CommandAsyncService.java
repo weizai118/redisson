@@ -15,12 +15,12 @@
  */
 package org.redisson.command;
 
+import java.security.MessageDigest;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -33,10 +33,11 @@ import org.redisson.RedissonReference;
 import org.redisson.RedissonShutdownException;
 import org.redisson.ScanResult;
 import org.redisson.SlotCallback;
-import org.redisson.api.NodeType;
 import org.redisson.api.RFuture;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.RedissonReactiveClient;
+import org.redisson.api.RedissonRxClient;
+import org.redisson.cache.LRUCacheMap;
 import org.redisson.client.RedisAskException;
 import org.redisson.client.RedisClient;
 import org.redisson.client.RedisConnection;
@@ -49,6 +50,7 @@ import org.redisson.client.RedisTimeoutException;
 import org.redisson.client.RedisTryAgainException;
 import org.redisson.client.WriteRedisConnectionException;
 import org.redisson.client.codec.Codec;
+import org.redisson.client.codec.StringCodec;
 import org.redisson.client.protocol.CommandData;
 import org.redisson.client.protocol.CommandsData;
 import org.redisson.client.protocol.RedisCommand;
@@ -59,7 +61,6 @@ import org.redisson.client.protocol.decoder.MapScanResult;
 import org.redisson.codec.ReferenceCodecProvider;
 import org.redisson.config.Config;
 import org.redisson.config.MasterSlaveServersConfig;
-import org.redisson.connection.ClientConnectionsEntry;
 import org.redisson.connection.ConnectionManager;
 import org.redisson.connection.MasterSlaveEntry;
 import org.redisson.connection.NodeSource;
@@ -71,6 +72,9 @@ import org.redisson.misc.RedissonPromise;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -92,6 +96,7 @@ public class CommandAsyncService implements CommandAsyncExecutor {
     final ConnectionManager connectionManager;
     protected RedissonClient redisson;
     protected RedissonReactiveClient redissonReactive;
+    protected RedissonRxClient redissonRx;
 
     public CommandAsyncService(ConnectionManager connectionManager) {
         this.connectionManager = connectionManager;
@@ -108,6 +113,7 @@ public class CommandAsyncService implements CommandAsyncExecutor {
             this.redisson = redisson;
             enableRedissonReferenceSupport(redisson.getConfig());
             this.redissonReactive = null;
+            this.redissonRx = null;
         }
         return this;
     }
@@ -118,6 +124,18 @@ public class CommandAsyncService implements CommandAsyncExecutor {
             this.redissonReactive = redissonReactive;
             enableRedissonReferenceSupport(redissonReactive.getConfig());
             this.redisson = null;
+            this.redissonRx = null;
+        }
+        return this;
+    }
+    
+    @Override
+    public CommandAsyncExecutor enableRedissonReferenceSupport(RedissonRxClient redissonRx) {
+        if (redissonRx != null) {
+            this.redissonReactive = null;
+            enableRedissonReferenceSupport(redissonRx.getConfig());
+            this.redisson = null;
+            this.redissonRx = redissonRx;
         }
         return this;
     }
@@ -130,7 +148,7 @@ public class CommandAsyncService implements CommandAsyncExecutor {
 
     @Override
     public boolean isRedissonReferenceSupportEnabled() {
-        return redisson != null || redissonReactive != null;
+        return redisson != null || redissonReactive != null || redissonRx != null;
     }
 
     @Override
@@ -139,7 +157,7 @@ public class CommandAsyncService implements CommandAsyncExecutor {
         try {
             int timeout = config.getTimeout() + config.getRetryInterval() * config.getRetryAttempts();
             if (!future.await(timeout)) {
-                throw new RedisTimeoutException("Subscribe timeout: (" + timeout + "ms)");
+                ((RPromise)future).tryFailure(new RedisTimeoutException("Subscribe timeout: (" + timeout + "ms)"));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -490,7 +508,121 @@ public class CommandAsyncService implements CommandAsyncExecutor {
         return mainPromise;
     }
 
-    private <T, R> RFuture<R> evalAsync(NodeSource nodeSource, boolean readOnlyMode, Codec codec, RedisCommand<T> evalCommandType, String script, List<Object> keys, Object... params) {
+    private RFuture<String> loadScript(List<Object> keys, String script) {
+        if (!keys.isEmpty()) {
+            Object key = keys.get(0);
+            if (key instanceof byte[]) {
+                return writeAsync((byte[])key, StringCodec.INSTANCE, RedisCommands.SCRIPT_LOAD, script);
+            }
+            return writeAsync((String)key, StringCodec.INSTANCE, RedisCommands.SCRIPT_LOAD, script);
+        }
+        
+        return writeAllAsync(RedisCommands.SCRIPT_LOAD, new SlotCallback<String, String>() {
+            volatile String result;
+            @Override
+            public void onSlotResult(String result) {
+                this.result = result;
+            }
+            
+            @Override
+            public String onFinish() {
+                return result;
+            }
+        }, script);
+    }
+    
+    protected boolean isEvalCacheActive() {
+        return getConnectionManager().getCfg().isUseScriptCache();
+    }
+    
+    private static final Map<String, String> shaCache = new LRUCacheMap<String, String>(500, 0, 0);
+    
+    private String calcSHA(String script) {
+        String digest = shaCache.get(script);
+        if (digest == null) {
+            try {
+                MessageDigest mdigest = MessageDigest.getInstance("SHA-1");
+                byte[] s = mdigest.digest(script.getBytes());
+                digest = ByteBufUtil.hexDump(s);
+                shaCache.put(script, digest);
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        }
+        return digest;
+    }
+    
+    private Object[] copy(Object[] params) {
+        List<Object> result = new ArrayList<Object>();
+        for (Object object : params) {
+            if (object instanceof ByteBuf) {
+                ByteBuf b = ((ByteBuf) object);
+                ByteBuf nb = ByteBufAllocator.DEFAULT.buffer(b.readableBytes());
+                int ri = b.readerIndex();
+                nb.writeBytes(b);
+                b.readerIndex(ri);
+                result.add(nb);
+            } else {
+                result.add(object);
+            }
+        }
+        return result.toArray();
+    }
+    
+    private <T, R> RFuture<R> evalAsync(final NodeSource nodeSource, boolean readOnlyMode, final Codec codec, final RedisCommand<T> evalCommandType, final String script, final List<Object> keys, final Object... params) {
+        if (isEvalCacheActive() && evalCommandType.getName().equals("EVAL")) {
+            final RPromise<R> mainPromise = new RedissonPromise<R>();
+            
+            final Object[] pps = copy(params);
+            
+            RPromise<R> promise = new RedissonPromise<R>();
+            final String sha1 = calcSHA(script);
+            RedisCommand command = new RedisCommand(evalCommandType, "EVALSHA");
+            List<Object> args = new ArrayList<Object>(2 + keys.size() + params.length);
+            args.add(sha1);
+            args.add(keys.size());
+            args.addAll(keys);
+            args.addAll(Arrays.asList(params));
+            async(false, nodeSource, codec, command, args.toArray(), promise, 0, false, null);
+            
+            promise.addListener(new FutureListener<R>() {
+                @Override
+                public void operationComplete(Future<R> future) throws Exception {
+                    if (!future.isSuccess()) {
+                        if (future.cause().getMessage().startsWith("NOSCRIPT")) {
+                            RFuture<String> loadFuture = loadScript(keys, script);
+                            loadFuture.addListener(new FutureListener<String>() {
+                                @Override
+                                public void operationComplete(Future<String> future) throws Exception {
+                                    if (!future.isSuccess()) {
+                                        free(pps);
+                                        mainPromise.tryFailure(future.cause());
+                                        return;
+                                    }
+
+                                    RedisCommand command = new RedisCommand(evalCommandType, "EVALSHA");
+                                    List<Object> args = new ArrayList<Object>(2 + keys.size() + params.length);
+                                    args.add(sha1);
+                                    args.add(keys.size());
+                                    args.addAll(keys);
+                                    args.addAll(Arrays.asList(pps));
+                                    async(false, nodeSource, codec, command, args.toArray(), mainPromise, 0, false,
+                                            null);
+                                }
+                            });
+                        } else {
+                            free(pps);
+                            mainPromise.tryFailure(future.cause());
+                        }
+                        return;
+                    }
+                    free(pps);
+                    mainPromise.trySuccess(future.getNow());
+                }
+            });
+            return mainPromise;
+        }
+        
         RPromise<R> mainPromise = createPromise();
         List<Object> args = new ArrayList<Object>(2 + keys.size() + params.length);
         args.add(script);
@@ -521,7 +653,7 @@ public class CommandAsyncService implements CommandAsyncExecutor {
         return mainPromise;
     }
     
-    protected <V, R> void async(final boolean readOnlyMode, final NodeSource source, final Codec codec,
+    public <V, R> void async(final boolean readOnlyMode, final NodeSource source, final Codec codec,
             final RedisCommand<V> command, final Object[] params, final RPromise<R> mainPromise, final int attempt, 
             final boolean ignoreRedirect, final RFuture<RedisConnection> connFuture) {
         if (mainPromise.isCancelled()) {
@@ -714,12 +846,10 @@ public class CommandAsyncService implements CommandAsyncExecutor {
         details.getTimeout().cancel();
 
         long timeoutTime = connectionManager.getConfig().getTimeout();
-        if (RedisCommands.BLOCKING_COMMANDS.contains(details.getCommand().getName())
-                || RedisCommands.XREAD_BLOCKING_SINGLE == details.getCommand()
-                    || RedisCommands.XREAD_BLOCKING == details.getCommand()) {
+        if (RedisCommands.BLOCKING_COMMAND_NAMES.contains(details.getCommand().getName())
+                || RedisCommands.BLOCKING_COMMANDS.contains(details.getCommand())) {
             Long popTimeout = null;
-            if (RedisCommands.XREAD_BLOCKING_SINGLE == details.getCommand()
-                    || RedisCommands.XREAD_BLOCKING == details.getCommand()) {
+            if (RedisCommands.BLOCKING_COMMANDS.contains(details.getCommand())) {
                 boolean found = false;
                 for (Object param : details.getParams()) {
                     if (found) {
@@ -934,14 +1064,14 @@ public class CommandAsyncService implements CommandAsyncExecutor {
 
     private <R, V> void handleReference(RPromise<R> mainPromise, R res) {
         try {
-            mainPromise.trySuccess(tryHandleReference(res));
+            mainPromise.trySuccess((R) tryHandleReference(res));
         } catch (Exception e) {
             //fall back and let other part of the code handle the type conversion.
             mainPromise.trySuccess(res);
         }
     }
     
-    protected <T> T tryHandleReference(T o) {
+    protected Object tryHandleReference(Object o) {
         boolean hasConversion = false;
         if (o instanceof List) {
             List<Object> r = (List<Object>) o;
@@ -989,7 +1119,7 @@ public class CommandAsyncService implements CommandAsyncExecutor {
             if (!hasConversion) {
                 return o;
             } else if (useNewSet) {
-                return (T) set;
+                return set;
             } else if (!set.isEmpty()) {
                 r.removeAll(set);
             }
@@ -1019,12 +1149,12 @@ public class CommandAsyncService implements CommandAsyncExecutor {
         } else if (o instanceof MapScanResult) {
             MapScanResult scanResult = (MapScanResult) o;
             Map oldMap = ((MapScanResult) o).getMap();
-            Map map = tryHandleReference(oldMap);
+            Map map = (Map) tryHandleReference(oldMap);
             if (map != oldMap) {
                 MapScanResult<Object, Object> newScanResult
                         = new MapScanResult<Object, Object>(scanResult.getPos(), map);
                 newScanResult.setRedisClient(scanResult.getRedisClient());
-                return (T) newScanResult;
+                return newScanResult;
             } else {
                 return o;
             }
@@ -1033,31 +1163,35 @@ public class CommandAsyncService implements CommandAsyncExecutor {
         }
     }
 
-    private <T> T tryHandleReference0(T o) {
+    private Object tryHandleReference0(Object o) {
         if (o instanceof RedissonReference) {
             return fromReference(o);
         } else if (o instanceof ScoredEntry && ((ScoredEntry) o).getValue() instanceof RedissonReference) {
             ScoredEntry<?> se = ((ScoredEntry<?>) o);
-            return (T) new ScoredEntry(se.getScore(), fromReference(se.getValue()));
+            return new ScoredEntry(se.getScore(), fromReference(se.getValue()));
         } else if (o instanceof Map.Entry) {
             Map.Entry old = (Map.Entry) o;
             Object key = tryHandleReference0(old.getKey());
             Object value = tryHandleReference0(old.getValue());
             return value != old.getValue() || key != old.getKey()
-                    ? (T) new AbstractMap.SimpleEntry(key, value)
+                    ? new AbstractMap.SimpleEntry(key, value)
                     : o;
         } else {
             return o;
         }
     }
 
-    private <R> R fromReference(Object res) {
+    private Object fromReference(Object res) {
         try {
-            return redisson != null
-                    ? RedissonObjectFactory.<R>fromReference(redisson, (RedissonReference) res)
-                    : RedissonObjectFactory.<R>fromReference(redissonReactive, (RedissonReference) res);
+            if (redisson != null) {
+                return RedissonObjectFactory.fromReference(redisson, (RedissonReference) res);
+            }
+            if (redissonReactive != null) {
+                return RedissonObjectFactory.fromReference(redissonReactive, (RedissonReference) res);
+            }
+            return RedissonObjectFactory.fromReference(redissonRx, (RedissonReference) res);
         } catch (Exception exception) {
-            return (R) res;
+            return res;
         }
     }
 

@@ -290,13 +290,12 @@ public interface RBatch {
     /**
      * Returns topic instance by name.
      *
-     * @param <M> type of message
      * @param name - name of object
      * @return Topic object
      */
-    <M> RTopicAsync<M> getTopic(String name);
+    RTopicAsync getTopic(String name);
 
-    <M> RTopicAsync<M> getTopic(String name, Codec codec);
+    RTopicAsync getTopic(String name, Codec codec);
 
     /**
      * Returns queue instance by name.
@@ -394,6 +393,14 @@ public interface RBatch {
      */
     RScriptAsync getScript();
 
+    /**
+     * Returns script operations object using provided codec.
+     * 
+     * @param codec - codec for params and result
+     * @return Script object
+     */
+    RScript getScript(Codec codec);
+    
     /**
      * Returns keys operations.
      * Each of Redis/Redisson object associated with own key

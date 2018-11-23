@@ -18,6 +18,8 @@ package org.redisson.spring.starter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.redisson.Redisson;
@@ -73,7 +75,9 @@ public class RedissonAutoConfiguration {
         Method timeoutMethod = ReflectionUtils.findMethod(RedisProperties.class, "getTimeout");
         Object timeoutValue = ReflectionUtils.invokeMethod(timeoutMethod, redisProperties);
         int timeout;
-        if (!(timeoutValue instanceof Integer)) {
+        if(null == timeoutValue){
+            timeout = 0;
+        }else if (!(timeoutValue instanceof Integer)) {
             Method millisMethod = ReflectionUtils.findMethod(timeoutValue.getClass(), "toMillis");
             timeout = ((Long) ReflectionUtils.invokeMethod(millisMethod, timeoutValue)).intValue();
         } else {
@@ -99,9 +103,9 @@ public class RedissonAutoConfiguration {
             
             String[] nodes;
             if (nodesValue instanceof String) {
-                nodes = ((String)nodesValue).split(",");
+                nodes = convert(Arrays.asList(((String)nodesValue).split(",")));
             } else {
-                nodes = ((List<String>)nodesValue).toArray(new String[((List<String>)nodesValue).size()]);
+                nodes = convert((List<String>)nodesValue);
             }
             
             config = new Config();
@@ -116,9 +120,11 @@ public class RedissonAutoConfiguration {
             Method nodesMethod = ReflectionUtils.findMethod(clusterObject.getClass(), "getNodes");
             List<String> nodesObject = (List) ReflectionUtils.invokeMethod(nodesMethod, clusterObject);
             
+            String[] nodes = convert(nodesObject);
+            
             config = new Config();
             config.useClusterServers()
-                .addNodeAddress(nodesObject.toArray(new String[nodesObject.size()]))
+                .addNodeAddress(nodes)
                 .setConnectTimeout(timeout)
                 .setPassword(redisProperties.getPassword());
         } else {
@@ -139,7 +145,19 @@ public class RedissonAutoConfiguration {
         return Redisson.create(config);
     }
 
-    protected InputStream getConfigStream() throws IOException {
+    private String[] convert(List<String> nodesObject) {
+        List<String> nodes = new ArrayList<String>(nodesObject.size());
+        for (String node : nodesObject) {
+            if (!node.startsWith("redis://") && !node.startsWith("rediss://")) {
+                nodes.add("redis://" + node);
+            } else {
+                nodes.add(node);
+            }
+        }
+        return nodes.toArray(new String[nodes.size()]);
+    }
+
+    private InputStream getConfigStream() throws IOException {
         Resource resource = ctx.getResource(redissonProperties.getConfig());
         InputStream is = resource.getInputStream();
         return is;

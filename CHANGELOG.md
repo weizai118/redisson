@@ -4,6 +4,55 @@ Redisson Releases History
 
 Please consider __[Redisson PRO](https://redisson.pro)__ version for advanced features and support by SLA.
 
+### 21-Nov-2018 - versions 2.14.1 and 3.9.1 released
+Feature - `takeFirstElements` and `takeLastElements` streaming methods added to `RBlockingDequeRx`  
+Feature - `RBlockingQueueRx.takeElements` streaming method added  
+Feature - `RTopicRx.getMessages` streaming method added  
+Feature - async methods for listener removal added to `RTopic` object  
+Feature - RxJava2 method call cancellation support added  
+Feature - `RObject.getSizeInMemory` method added  
+Feature - `RTopic.countListeners` method added  
+Feature - `takeFirstElements` and `takeLastElements` added to `RScoredSortedSetReactive` and `RScoredSortedSetRx` objects  
+Feature - `takeFirst` and `takeLast` methods added to `RScoredSortedSet` object  
+Feature - `readGroup` method variations added to `RStream` object  
+Feature - `remove`, `trim`, `fastClaim`, `removeGroup`, `removeConsumer`, `updateGroupMessageId` methods added to `RStream` object  
+Improvement - JCache performance optimization up to 2x times  
+Improvement - Redis url validation  
+Fixed - Exception serialization by Jackson codec  
+Fixed - DNS channels aren't pooled  
+Fixed - RStream commands don't work with Redis 5.0.1 version  
+Fixed - task scheduled with cron pattern isn't executed with single worker  
+Fixed - Spring Boot Starter doesn't convert properly list of sentinel addresses  
+Fixed - `RTopic` and all objects based on it stop work properly if Subscribe timeout occured  
+Fixed - JDK 1.6 compatibility for 2.x version  
+Fixed - IPv6 addresses format support for Sentinel mode (thanks to Mikhail Surin)  
+Fixed - null value handling for Spring Boot Starter's `timeoutValue` setting (Thanks to junwu215177)  
+Fixed - OOM during `RLocalCachedMap.fastPut` method invocation and Reference based EvictionPolicy is used  
+Fixed - exception in CommandDecoder while using PubSub with ping  
+Fixed - `RTopic.removeAllListeners` invocation leads to PubSub connections leak  
+Fixed - all methods of `RSemaphoreRx` and `RAtomicDoubleRx` objects should return `Flowable` object  
+Fixed - `Redisson.createRx` method should return RedissonRxClient  
+
+### 31-Oct-2018 - versions 2.14.0 and 3.9.0 released
+Feature - `RMap.putAll` with ttl param (thanks to [Tobias Wichtrey](https://github.com/wtobi))  
+Feature - RxJava 2 support. Please refer to [documentation](https://github.com/redisson/redisson/wiki/3.-Operations-execution#32-reactive-way) for more details  
+Feature - Lambda task definition for `RExecutorService`. Please refer to [documentation](https://github.com/redisson/redisson/wiki/9.-Distributed-services#932-distributed-executor-service-tasks) for more details  
+Feature - multi-type listeners support for `RTopic` and `RPatternTopic` objects. Please refer to [documentation](https://github.com/redisson/redisson/wiki/6.-Distributed-objects#67-topic) for more details  
+Feature - `useScriptCache` setting added. Manages by Lua-script caching on Redis side. Please refer to [documentation](https://github.com/redisson/redisson/wiki/2.-Configuration#usescriptcache) for more details  
+Feature - added `RMap.putAllAsync` method with batch size  
+Feature - added `RSet.random` method limited by count  
+Improvement - memory allocation optimization during ExecutorService task execution  
+Fixed - `keepAlive` is not being set  
+Fixed - Redisson can't resolve short DNS name  
+Fixed - Redisson shuts down executor it doesn't own  
+Fixed - "spring.redis.cluster.nodes" param parsing for spring-boot  
+Fixed - `Node.ping` throws Exception if node is unreachable  
+Fixed - NPE in `CommandDecoder`  
+Fixed - `DecoderException` thrown when `pingConnectionInterval` setting being set  
+Fixed - `BlockingQueue.take` method doesn't survey failover  
+Fixed - `SnappyCodecV2` codec doesn't decode properly underlying data encoded by FST codec  
+Fixed - `UnsupportedOperationException` thrown when using Spring Actuator with redisson-spring-data lib  
+
 ### 06-Oct-2018 - versions 2.13.2 and 3.8.2 released
 Feature - `RPermitExpirableSemaphore.updateLeaseTime` method added  
 Improvements - cluster state check  

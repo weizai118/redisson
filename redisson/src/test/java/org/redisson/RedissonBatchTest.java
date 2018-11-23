@@ -117,7 +117,7 @@ public class RedissonBatchTest extends BaseTest {
         assertThat(b2f2.get()).isEqualTo(2d);
     }
     
-    @Test(timeout = 21000)
+    @Test(timeout = 22000)
     public void testPerformance() {
         RMap<String, String> map = redisson.getMap("map");
         Map<String, String> m = new HashMap<String, String>();
@@ -150,7 +150,7 @@ public class RedissonBatchTest extends BaseTest {
         
         BatchOptions batchOptions = BatchOptions.defaults().executionMode(ExecutionMode.REDIS_WRITE_ATOMIC);
         RBatch batch = redisson.createBatch(batchOptions);
-        for (int i = 0; i < 200000; i++) {
+        for (int i = 0; i < 300000; i++) {
             batch.getBucket("test").setAsync(123);
         }
         
